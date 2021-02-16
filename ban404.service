@@ -1,0 +1,11 @@
+[Unit]
+Description=Ban daemon for HTTP 404 log burst/spammers
+Before=network.target
+
+[Service]
+ExecStart=/usr/sbin/ban404 -d
+KillMode=process
+
+[Install]
+WantedBy=multi-user.target
+Alias=ban404.service
