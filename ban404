@@ -1,5 +1,7 @@
 #!/bin/bash
 
+[[ $UID -eq 0 ]] || { echo "ban404 error: Must be run as root"; exit 1; }
+
 # Put your device here. You can get it by running 'ip link' or
 # 'ls /sys/class/net' in a terminal.
 #DEVICE=enp63s0
@@ -11,14 +13,16 @@ DEVICE=eth0
 IPLIST=/var/cache/ban404/ip.lst
 
 [[ "$1" = "install" ]] && {
-	[[ $UID -eq 0 ]] || { echo "ban404 error: Must be run as root"; exit 1; }
-
 	mkdir -pv $(dirname "$IPLIST")
 	touch "$IPLIST"
 	cp -v ban404 /usr/sbin
-	cp -v ban404.service /usr/lib/systemd/system
-	systemctl daemon-reload
-	systemctl start ban404
+
+	pgrep systemd &>/dev/null && {
+		cp -v ban404.service /usr/lib/systemd/system
+		systemctl daemon-reload
+		systemctl start ban404
+		systemctl enable ban404
+	}
 
 	exit 0
 }
@@ -57,7 +61,7 @@ IPLIST=/var/cache/ban404/ip.lst
 				MINPREV=$MIN
 				CNT=0
 			fi
-			[ $CNT -ge 9 ] && {
+			[ $CNT -ge 5 ] && {
 				$0 "$IP"
 				CNT=0
 			}
@@ -70,24 +74,25 @@ IPLIST=/var/cache/ban404/ip.lst
 }
 
 [ "$1" = "-a" ] && {
-	iptables -F
-	# iptables -A INPUT -p icmp -j LOG --log-prefix "ping "
+	iptables -N ban404 2>/dev/null
+	iptables -L INPUT | grep -- '-j ban404' ||
+		iptables -I INPUT -j ban404
 	for ip in `cat $IPLIST`; do
-		iptables -A INPUT -i $DEVICE -s $ip -j DROP
+		iptables -A ban404 -i $DEVICE -s $ip -j DROP
 	done
 }
 
 if [ "$(basename $0)" = "unban" ]; then
 	echo "$1" | grep -E "[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+" >/dev/null && {
 		grep "$1" $IPLIST >/dev/null && {
-			iptables -D INPUT -i $DEVICE -s $1 -j DROP &&
+			iptables -D ban404 -i $DEVICE -s $1 -j DROP &&
 				sed -i "/$1/d" $IPLIST
 		}
 	}
 	exit 0
 else # ban
 	echo "$1" | grep -E "[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+" >/dev/null && {
-			iptables -A INPUT -i $DEVICE -s $1 -j DROP &&
+			iptables -A ban404 -i $DEVICE -s $1 -j DROP &&
 				echo "$1" >> $IPLIST
 	}
 fi
